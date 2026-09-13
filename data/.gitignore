@@ -1,0 +1,4 @@
+# This directory is intentionally local-only.
+# It may contain your Weibo session, saved posts, original images, and logs.
+*
+!.gitignore

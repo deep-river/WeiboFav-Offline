@@ -1,0 +1,16 @@
+{
+  "dataDir": "data",
+  "browserProfileDir": "data/capture-browser-profile",
+  "libraryUrl": "http://127.0.0.1:4319",
+  "favoritesUrl": "https://weibo.com/u/favorites?page={page}",
+  "delayMinMs": 3500,
+  "delayMaxMs": 6000,
+  "batchSize": 20,
+  "batchPauseMs": 90000,
+  "maxConsecutiveFailures": 2,
+  "mediaConcurrency": 2,
+  "minimumFreeBytes": 10737418240,
+  "minimumFreeFraction": 0.1,
+  "headless": true,
+  "logDir": "data/logs"
+}

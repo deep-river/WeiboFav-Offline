@@ -2,6 +2,14 @@
   "name": "weibofav-offline",
   "version": "1.0.0",
   "description": "Archive and browse your own Weibo favourites locally.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/deep-river/WeiboFav-Offline.git"
+  },
+  "bugs": {
+    "url": "https://github.com/deep-river/WeiboFav-Offline/issues"
+  },
+  "homepage": "https://github.com/deep-river/WeiboFav-Offline#readme",
   "engines": {
     "node": ">=22.13.0"
   },

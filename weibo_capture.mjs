@@ -576,18 +576,19 @@ async function main() {
         { waitUntil: 'domcontentloaded' },
       );
       const discovered = await favoritesOnPage(page);
-      await api(settings.libraryUrl, '/api/queue', {
+      const queued = await api(settings.libraryUrl, '/api/queue', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ favoritePage, urls: discovered }),
       });
-      urls.push(...discovered);
+      urls.push(...queued.captureUrls);
       await logger.log('favorites_discovered', {
         favoritePage,
         count: discovered.length,
+        queuedCount: queued.captureUrls.length,
       });
       console.log(
-        `收藏页 ${favoritePage}：发现 ${discovered.length} 条正文链接。`,
+        `收藏页 ${favoritePage}：发现 ${discovered.length} 条，待采集 ${queued.captureUrls.length} 条。`,
       );
       if (index < pages - 1 && urls.length < limit) {
         const delayMs = jitter(settings);

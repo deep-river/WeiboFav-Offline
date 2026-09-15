@@ -131,9 +131,17 @@ class Handler(SimpleHTTPRequestHandler):
         if not urls: raise ValueError
       except (ValueError, json.JSONDecodeError): self.send_json(HTTPStatus.BAD_REQUEST, {'error': 'Invalid queue request'}); return
       with connect() as conn:
-        for url in urls: conn.execute("INSERT INTO capture_jobs (source_url, favorite_page) VALUES (?, ?) ON CONFLICT(source_url) DO UPDATE SET favorite_page=excluded.favorite_page, updated_at=CURRENT_TIMESTAMP", (url, page))
+        capture_urls = []
+        for url in urls:
+          row = conn.execute('SELECT state FROM capture_jobs WHERE source_url=?', (url,)).fetchone()
+          if row is None:
+            conn.execute('INSERT INTO capture_jobs (source_url, favorite_page) VALUES (?, ?)', (url, page))
+            capture_urls.append(url)
+          else:
+            conn.execute('UPDATE capture_jobs SET favorite_page=?, updated_at=CURRENT_TIMESTAMP WHERE source_url=?', (page, url))
+            if row['state'] not in ('captured', 'skipped_deleted'): capture_urls.append(url)
         pending = conn.execute("SELECT COUNT(*) FROM capture_jobs WHERE state='queued'").fetchone()[0]
-      self.send_json(HTTPStatus.OK, {'queued': len(urls), 'pending': pending}); return
+      self.send_json(HTTPStatus.OK, {'queued': len(capture_urls), 'pending': pending, 'captureUrls': capture_urls}); return
     if urlparse(self.path).path == '/api/job':
       try:
         body = json.loads(self.rfile.read(int(self.headers.get('Content-Length', '0')))); url = body['sourceUrl']; state = body['state']; detail = body.get('detail')

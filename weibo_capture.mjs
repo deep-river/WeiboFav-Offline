@@ -589,6 +589,11 @@ async function main() {
       console.log(
         `收藏页 ${favoritePage}：发现 ${discovered.length} 条正文链接。`,
       );
+      if (index < pages - 1 && urls.length < limit) {
+        const delayMs = jitter(settings);
+        await logger.log('favorites_page_pause', { favoritePage, delayMs });
+        await pause(delayMs);
+      }
     }
     const queue = [...new Set(urls)].slice(0, limit);
     let captured = 0;

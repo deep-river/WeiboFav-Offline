@@ -402,25 +402,35 @@ async function favoritesOnPage(page) {
   );
   if (!page.url().includes('/u/favorites'))
     throw new Error(`收藏页发生跳转：${page.url()}`);
-  const urls = await page.locator('article').evaluateAll((articles) => {
+  // Deleted favorites render as cards without a status URL. Wait for the page
+  // itself to finish mounting instead of rejecting a valid page solely because
+  // it contains several deleted posts.
+  await page.waitForFunction(
+    () => document.querySelectorAll('article').length >= 10,
+    { timeout: 30000 },
+  );
+  const result = await page.locator('article').evaluateAll((articles) => {
     const pattern = /^https:\/\/weibo\.com\/\d+\/[A-Za-z0-9]+(?:[/?#].*)?$/;
-    return [
-      ...new Set(
-        articles
-          .map((article) =>
-            [...article.querySelectorAll('a[href]')]
-              .map((link) => link.href)
-              .find((href) => pattern.test(href)),
-          )
-          .filter(Boolean),
-      ),
-    ];
+    return {
+      articleCount: articles.length,
+      urls: [
+        ...new Set(
+          articles
+            .map((article) =>
+              [...article.querySelectorAll('a[href]')]
+                .map((link) => link.href)
+                .find((href) => pattern.test(href)),
+            )
+            .filter(Boolean),
+        ),
+      ],
+    };
   });
-  if (urls.length < 10)
+  if (result.articleCount < 10 || result.urls.length === 0)
     throw new Error(
-      `收藏页只识别到 ${urls.length} 条正文链接，拒绝继续以防混入推流`,
+      `收藏页缺少可验证的正文链接（卡片 ${result.articleCount}，链接 ${result.urls.length}），拒绝继续以防混入推流`,
     );
-  return urls;
+  return result.urls;
 }
 async function markJob(config, sourceUrlValue, state, detail) {
   await api(config.libraryUrl, '/api/job', {

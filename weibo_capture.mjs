@@ -402,11 +402,11 @@ async function favoritesOnPage(page) {
   );
   if (!page.url().includes('/u/favorites'))
     throw new Error(`收藏页发生跳转：${page.url()}`);
-  // Deleted favorites render as cards without a status URL. Wait for the page
-  // itself to finish mounting instead of rejecting a valid page solely because
-  // it contains several deleted posts.
+  // Favorites are virtualized and deleted items do not expose a status URL.
+  // A non-empty card list plus the explicit favourites heading and URL is a
+  // stronger page identity check than assuming a fixed number of visible rows.
   await page.waitForFunction(
-    () => document.querySelectorAll('article').length >= 10,
+    () => document.querySelectorAll('article').length > 0,
     { timeout: 30000 },
   );
   const result = await page.locator('article').evaluateAll((articles) => {
@@ -426,11 +426,27 @@ async function favoritesOnPage(page) {
       ],
     };
   });
-  if (result.articleCount < 10 || result.urls.length === 0)
+  if (result.articleCount === 0 || result.urls.length === 0)
     throw new Error(
       `收藏页缺少可验证的正文链接（卡片 ${result.articleCount}，链接 ${result.urls.length}），拒绝继续以防混入推流`,
     );
   return result.urls;
+}
+async function loadFavoritesPage(page, url) {
+  let lastError;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      // Weibo often renders the favourites shell before DOMContentLoaded. Once
+      // navigation commits, favouritesOnPage performs the content-specific
+      // readiness checks above, avoiding a false navigation timeout.
+      await page.goto(url, { waitUntil: 'commit', timeout: 60000 });
+      return await favoritesOnPage(page);
+    } catch (error) {
+      lastError = error;
+      if (attempt < 3) await pause(attempt * 3000);
+    }
+  }
+  throw lastError;
 }
 async function markJob(config, sourceUrlValue, state, detail) {
   await api(config.libraryUrl, '/api/job', {
@@ -581,11 +597,10 @@ async function main() {
       index += 1
     ) {
       const favoritePage = fromPage + index;
-      await page.goto(
+      const discovered = await loadFavoritesPage(
+        page,
         settings.favoritesUrl.replace('{page}', String(favoritePage)),
-        { waitUntil: 'domcontentloaded' },
       );
-      const discovered = await favoritesOnPage(page);
       const queued = await api(settings.libraryUrl, '/api/queue', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },

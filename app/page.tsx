@@ -71,6 +71,13 @@ const filters = [
   { id: 'image', label: '含图片' },
   { id: 'video', label: '视频缩略图' },
 ];
+const libraryOrigin = (process.env.NEXT_PUBLIC_WEIBOFAV_LIBRARY_URL || '').replace(
+  /\/$/,
+  '',
+);
+function libraryUrl(path: string) {
+  return libraryOrigin ? `${libraryOrigin}${path}` : path;
+}
 
 function formatBytes(bytes: number) {
   return bytes < 1024 * 1024
@@ -140,7 +147,7 @@ export default function Home() {
         media: filter,
         q: query.trim(),
       });
-      const response = await fetch(`/api/posts?${parameters}`, {
+      const response = await fetch(libraryUrl(`/api/posts?${parameters}`), {
         cache: 'no-store',
       });
       if (!response.ok) throw new Error('无法读取离线库');
@@ -196,7 +203,7 @@ export default function Home() {
   const deleteSelected = async () => {
     setDeleting(true);
     try {
-      const response = await fetch('/api/delete', {
+      const response = await fetch(libraryUrl('/api/delete'), {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ ids: selected }),
@@ -295,7 +302,7 @@ export default function Home() {
                   aria-label={`查看${media.kind === 'image' ? '原图' : '视频缩略图'}`}
                 >
                   <img
-                    src={media.localUrl}
+                    src={libraryUrl(media.localUrl)}
                     alt={
                       media.kind === 'video-thumbnail'
                         ? '视频缩略图'
@@ -583,7 +590,7 @@ export default function Home() {
             }}
           >
             <img
-              src={viewer?.localUrl}
+              src={viewer ? libraryUrl(viewer.localUrl) : undefined}
               alt={
                 viewer?.kind === 'video-thumbnail'
                   ? '放大的视频缩略图'

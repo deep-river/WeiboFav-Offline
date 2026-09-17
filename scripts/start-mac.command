@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
 # Double-click in Finder or run: ./scripts/start-mac.command
 set -euo pipefail
+export PATH="/usr/sbin:/usr/bin:/bin:$PATH"
 
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 PID_FILE="$PROJECT_DIR/.weibofav-server.pid"
+API_PID_FILE="$PROJECT_DIR/.weibofav-api.pid"
 PORT_FILE="$PROJECT_DIR/.weibofav-server.port"
+API_PORT_FILE="$PROJECT_DIR/.weibofav-api.port"
 LOG_DIR="$PROJECT_DIR/data/logs"
 
 cd "$PROJECT_DIR"
@@ -19,8 +22,8 @@ if { ! command -v node >/dev/null || ! command -v pnpm >/dev/null; } && [[ -x "$
   echo 'Using the local Codex Node runtime. Install Node.js and pnpm for standalone use.'
 fi
 
-if [[ -f "$PID_FILE" ]] && kill -0 "$(<"$PID_FILE")" 2>/dev/null; then
-  if [[ "$(ps -p "$(<"$PID_FILE")" -o command=)" == *'library_server.py'* ]]; then
+if [[ -f "$PID_FILE" && -f "$API_PID_FILE" ]] && kill -0 "$(<"$PID_FILE")" 2>/dev/null && kill -0 "$(<"$API_PID_FILE")" 2>/dev/null; then
+  if [[ "$(ps -p "$(<"$PID_FILE")" -o command=)" == *'vinext'* ]] && [[ "$(ps -p "$(<"$API_PID_FILE")" -o command=)" == *'library_server.py'* ]]; then
     PORT=4319
     [[ -f "$PORT_FILE" ]] && PORT="$(<"$PORT_FILE")"
     [[ "$PORT" =~ ^[0-9]+$ ]] || PORT=4319
@@ -30,33 +33,66 @@ if [[ -f "$PID_FILE" ]] && kill -0 "$(<"$PID_FILE")" 2>/dev/null; then
     exit 0
   fi
 fi
-rm -f "$PID_FILE" "$PORT_FILE"
+
+# Replace launch records written by older versions, which started only the API
+# service and therefore could not render the Vinext production page.
+for stale_pid_file in "$PID_FILE" "$API_PID_FILE"; do
+  if [[ -f "$stale_pid_file" ]] && kill -0 "$(<"$stale_pid_file")" 2>/dev/null; then
+    stale_command="$(ps -p "$(<"$stale_pid_file")" -o command=)"
+    if [[ "$stale_command" == *'library_server.py'* || "$stale_command" == *'vinext'* ]]; then
+      kill "$(<"$stale_pid_file")"
+    fi
+  fi
+done
+rm -f "$PID_FILE" "$API_PID_FILE" "$PORT_FILE" "$API_PORT_FILE"
 
 command -v node >/dev/null || { echo 'Node.js 22+ is required. Install it from https://nodejs.org/.'; exit 1; }
 command -v pnpm >/dev/null || { echo 'pnpm is required. Install it with: corepack enable && corepack prepare pnpm@latest --activate'; exit 1; }
 command -v python3 >/dev/null || { echo 'Python 3 is required. Install Python 3 first.'; exit 1; }
 
-PORT=4319
-while lsof -nP -iTCP:"$PORT" -sTCP:LISTEN >/dev/null 2>&1; do
-  PORT=$((PORT + 1))
-  if (( PORT > 65535 )); then
+next_free_port() {
+  local port="$1"
+  while lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; do
+    port=$((port + 1))
+    if (( port > 65535 )); then
     echo 'Could not find a free local TCP port.'
     exit 1
-  fi
-done
+    fi
+  done
+  printf '%s\n' "$port"
+}
+PORT="$(next_free_port 4319)"
+API_PORT="$(next_free_port "$((PORT + 1))")"
 URL="http://127.0.0.1:$PORT"
+API_URL="http://127.0.0.1:$API_PORT"
 
 if [[ ! -d node_modules ]]; then
   pnpm install --frozen-lockfile
 fi
-pnpm build
-nohup python3 library_server.py --port "$PORT" >"$LOG_DIR/library-server.log" 2>&1 &
+NEXT_PUBLIC_WEIBOFAV_LIBRARY_URL="$API_URL" pnpm build
+nohup python3 library_server.py --port "$API_PORT" >"$LOG_DIR/library-server.log" 2>&1 &
+API_PID=$!
+printf '%s\n' "$API_PID" > "$API_PID_FILE"
+printf '%s\n' "$API_PORT" > "$API_PORT_FILE"
+
+for _ in {1..10}; do
+  if curl -fsS "$API_URL/api/posts?page=1&pageSize=10" >/dev/null 2>&1; then break; fi
+  sleep 0.5
+done
+if ! curl -fsS "$API_URL/api/posts?page=1&pageSize=10" >/dev/null 2>&1; then
+  kill "$API_PID" 2>/dev/null || true
+  rm -f "$API_PID_FILE" "$API_PORT_FILE"
+  echo "The local API did not start. See $LOG_DIR/library-server.log"
+  exit 1
+fi
+
+nohup pnpm exec vinext start --port "$PORT" >"$LOG_DIR/web-server.log" 2>&1 &
 SERVER_PID=$!
 printf '%s\n' "$SERVER_PID" > "$PID_FILE"
 printf '%s\n' "$PORT" > "$PORT_FILE"
 
 for _ in {1..10}; do
-  if curl -fsS "$URL/api/posts?page=1&pageSize=10" >/dev/null 2>&1; then
+  if curl -fsS "$URL/" >/dev/null 2>&1; then
     open "$URL"
     echo "WeiboFav Offline is running: $URL"
     exit 0
@@ -65,6 +101,7 @@ for _ in {1..10}; do
 done
 
 kill "$SERVER_PID" 2>/dev/null || true
-rm -f "$PID_FILE" "$PORT_FILE"
-echo "The service did not start. See $LOG_DIR/library-server.log"
+kill "$API_PID" 2>/dev/null || true
+rm -f "$PID_FILE" "$API_PID_FILE" "$PORT_FILE" "$API_PORT_FILE"
+echo "The web service did not start. See $LOG_DIR/web-server.log"
 exit 1

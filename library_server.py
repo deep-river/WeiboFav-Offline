@@ -10,7 +10,7 @@ from urllib.parse import unquote, urlparse
 
 ROOT = Path(__file__).resolve().parent
 DATA = Path(os.environ.get('WEIBOFAV_DATA_DIR', ROOT / 'data')).expanduser().resolve()
-MEDIA, DB, BUILD = DATA / 'media', DATA / 'library.sqlite3', ROOT / 'dist' / 'client'
+MEDIA, DB = DATA / 'media', DATA / 'library.sqlite3'
 SCHEMA = '''CREATE TABLE IF NOT EXISTS posts (id TEXT PRIMARY KEY, author TEXT NOT NULL, published_at TEXT NOT NULL, source_url TEXT NOT NULL, source TEXT NOT NULL, text TEXT NOT NULL, repost_text TEXT, repost_author TEXT, captured_at TEXT NOT NULL, tags_json TEXT NOT NULL); CREATE TABLE IF NOT EXISTS media (id TEXT PRIMARY KEY, post_id TEXT NOT NULL REFERENCES posts(id) ON DELETE CASCADE, kind TEXT NOT NULL CHECK(kind IN ('image','video-thumbnail')), relative_path TEXT NOT NULL, original_url TEXT NOT NULL, bytes INTEGER NOT NULL); CREATE TABLE IF NOT EXISTS sync_state (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP); CREATE TABLE IF NOT EXISTS capture_jobs (source_url TEXT PRIMARY KEY, favorite_page INTEGER NOT NULL, state TEXT NOT NULL DEFAULT 'queued' CHECK(state IN ('queued','captured','skipped_deleted','failed')), attempts INTEGER NOT NULL DEFAULT 0, discovered_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP); CREATE TABLE IF NOT EXISTS local_tombstones (source_url TEXT PRIMARY KEY, post_id TEXT NOT NULL, deleted_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, reason TEXT NOT NULL DEFAULT 'local_delete'); CREATE TABLE IF NOT EXISTS favorite_observations (source_url TEXT PRIMARY KEY, first_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, last_favorite_page INTEGER NOT NULL, sightings INTEGER NOT NULL DEFAULT 1); CREATE INDEX IF NOT EXISTS idx_posts_published_at ON posts(published_at DESC); CREATE INDEX IF NOT EXISTS idx_media_post_id ON media(post_id); CREATE INDEX IF NOT EXISTS idx_capture_jobs_state ON capture_jobs(state, favorite_page); CREATE INDEX IF NOT EXISTS idx_favorite_observations_page ON favorite_observations(last_favorite_page);'''
 
 def connect():
@@ -62,6 +62,11 @@ def library(page=1, page_size=20, query='', media_kind='all'):
   return {'posts': posts, 'page': page, 'pageSize': page_size, 'total': total, 'stats': {'mediaBytes': used, 'freeBytes': shutil.disk_usage(DATA).free}}
 
 class Handler(SimpleHTTPRequestHandler):
+  def end_headers(self):
+    self.send_header('Access-Control-Allow-Origin', '*')
+    self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+    self.send_header('Access-Control-Allow-Headers', 'Content-Type')
+    super().end_headers()
   def send_json(self, status, payload):
     data = json.dumps(payload, ensure_ascii=False).encode('utf-8'); self.send_response(status); self.send_header('Content-Type', 'application/json; charset=utf-8'); self.send_header('Content-Length', str(len(data))); self.end_headers(); self.wfile.write(data)
   def do_GET(self):
@@ -84,10 +89,9 @@ class Handler(SimpleHTTPRequestHandler):
       except ValueError: self.send_error(HTTPStatus.NOT_FOUND); return
       if not file.is_file(): self.send_error(HTTPStatus.NOT_FOUND); return
       data = file.read_bytes(); self.send_response(HTTPStatus.OK); self.send_header('Content-Type', mimetypes.guess_type(file.name)[0] or 'application/octet-stream'); self.send_header('Content-Length', str(len(data))); self.end_headers(); self.wfile.write(data); return
-    target = BUILD / (path.lstrip('/') or 'index.html')
-    if not target.is_file(): target = BUILD / 'index.html'
-    if not target.is_file(): self.send_error(HTTPStatus.SERVICE_UNAVAILABLE, 'Run the site build first.'); return
-    self.path = '/' + str(target.relative_to(BUILD)); return super().do_GET()
+    self.send_error(HTTPStatus.NOT_FOUND, 'This is the local API service. Use the web address printed by the launcher.'); return
+  def do_OPTIONS(self):
+    self.send_response(HTTPStatus.NO_CONTENT); self.end_headers()
   def do_POST(self):
     if urlparse(self.path).path == '/api/captured':
       try:

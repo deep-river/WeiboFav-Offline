@@ -26,11 +26,10 @@
 git clone https://github.com/deep-river/WeiboFav-Offline.git
 cd WeiboFav-Offline
 pnpm install
-pnpm build
-pnpm library
+./scripts/start-mac.command
 ```
 
-打开 <http://127.0.0.1:4319> 即可浏览离线库。`pnpm start` 会自动执行构建后启动同一服务。
+启动脚本会分别启动页面服务与仅供本机访问的 API/媒体服务；命令行打印并自动打开的地址才是离线库页面地址。不要直接访问内部 API 端口。
 
 ### 一键启动与停止
 

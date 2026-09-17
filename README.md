@@ -36,6 +36,8 @@ pnpm library
 
 首次使用前请安装 Node.js、pnpm 和 Python 3。之后可双击或在终端执行以下脚本；启动脚本会在需要时安装依赖、构建页面，并从 `4319` 开始自动寻找可用端口（例如 `4319` 被占用时改用 `4320`）。完成后会在命令行显示实际地址并自动打开浏览器。停止脚本只会终止由该项目启动且记录在 PID 文件中的服务。
 
+在运行 Codex desktop 的 macOS 机器上，若尚未安装 Node.js/pnpm，启动脚本会临时使用 Codex 自带的本地运行时并提示你安装正式依赖；这只是当前机器的便利回退，不会随项目部署到其他设备。要完全独立使用，请安装 Node.js 22+，然后运行 `corepack enable && corepack prepare pnpm@latest --activate`。
+
 ```bash
 # macOS
 ./scripts/start-mac.command

@@ -10,6 +10,15 @@ LOG_DIR="$PROJECT_DIR/data/logs"
 cd "$PROJECT_DIR"
 mkdir -p "$LOG_DIR"
 
+# A normal standalone installation uses Node.js and pnpm from the user's PATH.
+# Codex desktop provides a local Node runtime as a development-only fallback so
+# this checked-out project can still be launched before Node is installed.
+CODEX_RUNTIME="$HOME/.cache/codex-runtimes/codex-primary-runtime/dependencies"
+if { ! command -v node >/dev/null || ! command -v pnpm >/dev/null; } && [[ -x "$CODEX_RUNTIME/node/bin/node" ]] && [[ -x "$CODEX_RUNTIME/bin/fallback/pnpm" ]]; then
+  export PATH="$CODEX_RUNTIME/bin/fallback:$CODEX_RUNTIME/node/bin:$PATH"
+  echo 'Using the local Codex Node runtime. Install Node.js and pnpm for standalone use.'
+fi
+
 if [[ -f "$PID_FILE" ]] && kill -0 "$(<"$PID_FILE")" 2>/dev/null; then
   if [[ "$(ps -p "$(<"$PID_FILE")" -o command=)" == *'library_server.py'* ]]; then
     PORT=4319
@@ -23,7 +32,8 @@ if [[ -f "$PID_FILE" ]] && kill -0 "$(<"$PID_FILE")" 2>/dev/null; then
 fi
 rm -f "$PID_FILE" "$PORT_FILE"
 
-command -v pnpm >/dev/null || { echo 'pnpm is required. Install pnpm first.'; exit 1; }
+command -v node >/dev/null || { echo 'Node.js 22+ is required. Install it from https://nodejs.org/.'; exit 1; }
+command -v pnpm >/dev/null || { echo 'pnpm is required. Install it with: corepack enable && corepack prepare pnpm@latest --activate'; exit 1; }
 command -v python3 >/dev/null || { echo 'Python 3 is required. Install Python 3 first.'; exit 1; }
 
 PORT=4319

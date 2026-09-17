@@ -41,6 +41,8 @@ next-env.d.ts
 /data/*
 !/data/.gitignore
 /capture.config.json
+/.weibofav-server.pid
+/.weibofav-server.port
 /__pycache__/
 
 # The starter ships a broad UI catalog; track only the primitives used here.

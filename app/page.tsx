@@ -1,6 +1,6 @@
 'use client';
 
-import { type ReactElement, useCallback, useEffect, useState } from 'react';
+import { Fragment, type ReactElement, useCallback, useEffect, useState } from 'react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -18,6 +18,7 @@ import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import {
   Pagination,
   PaginationContent,
+  PaginationEllipsis,
   PaginationItem,
   PaginationLink,
   PaginationNext,
@@ -25,6 +26,8 @@ import {
 } from '@/components/ui/pagination';
 import {
   Archive,
+  ChevronsDown,
+  ChevronsUp,
   Check,
   ExternalLink,
   Film,
@@ -104,6 +107,14 @@ function renderMentions(value: string) {
   return pieces;
 }
 
+function paginationPages(current: number, total: number) {
+  const pages = new Set([1, total]);
+  for (let target = current - 2; target <= current + 2; target += 1) {
+    if (target >= 1 && target <= total) pages.add(target);
+  }
+  return [...pages].sort((left, right) => left - right);
+}
+
 export default function Home() {
   const [posts, setPosts] = useState<Post[]>([]);
   const [stats, setStats] = useState<ApiResponse['stats']>({
@@ -158,6 +169,7 @@ export default function Home() {
 
   const visiblePosts = posts;
   const pageCount = Math.max(1, Math.ceil(total / 20));
+  const nearbyPages = paginationPages(page, pageCount);
   const selectedVisible = visiblePosts.filter((post) =>
     selected.includes(post.id),
   );
@@ -175,6 +187,12 @@ export default function Home() {
         ? [...new Set([...current, ...visiblePosts.map((post) => post.id)])]
         : current.filter((id) => !visiblePosts.some((post) => post.id === id)),
     );
+  const goToPage = (nextPage: number) => {
+    const target = Math.max(1, Math.min(pageCount, nextPage));
+    if (target === page) return;
+    setPage(target);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
   const deleteSelected = async () => {
     setDeleting(true);
     try {
@@ -384,7 +402,7 @@ export default function Home() {
               ))}
             </div>
           </div>
-          <div className="mb-5 flex flex-wrap items-center justify-between gap-3 text-sm">
+          <div className="sticky top-3 z-20 mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#dbe4e0] bg-[#fbfcf8]/95 px-3 py-2 text-sm shadow-sm backdrop-blur">
             <label className="flex cursor-pointer items-center gap-2 text-[#53645f]">
               <Checkbox
                 checked={allVisibleSelected}
@@ -436,7 +454,7 @@ export default function Home() {
                 {visiblePosts.map(renderPost)}
               </ol>
               <Pagination className="mt-8">
-                <PaginationContent>
+                <PaginationContent className="max-w-full overflow-x-auto px-1">
                   <PaginationItem>
                     <PaginationPrevious
                       href="#"
@@ -444,20 +462,32 @@ export default function Home() {
                       aria-disabled={page === 1}
                       onClick={(event) => {
                         event.preventDefault();
-                        if (page > 1) setPage(page - 1);
+                        goToPage(page - 1);
                       }}
                     />
                   </PaginationItem>
-                  <PaginationItem>
-                    <PaginationLink
-                      href="#"
-                      isActive
-                      size="default"
-                      onClick={(event) => event.preventDefault()}
-                    >
-                      {page} / {pageCount}
-                    </PaginationLink>
-                  </PaginationItem>
+                  {nearbyPages.map((target, index) => (
+                    <Fragment key={target}>
+                      {index > 0 && target - nearbyPages[index - 1] > 1 && (
+                        <PaginationItem>
+                          <PaginationEllipsis />
+                        </PaginationItem>
+                      )}
+                      <PaginationItem>
+                        <PaginationLink
+                          href={`#page-${target}`}
+                          isActive={target === page}
+                          size="default"
+                          onClick={(event) => {
+                            event.preventDefault();
+                            goToPage(target);
+                          }}
+                        >
+                          {target}
+                        </PaginationLink>
+                      </PaginationItem>
+                    </Fragment>
+                  ))}
                   <PaginationItem>
                     <PaginationNext
                       href="#"
@@ -465,7 +495,7 @@ export default function Home() {
                       aria-disabled={page === pageCount}
                       onClick={(event) => {
                         event.preventDefault();
-                        if (page < pageCount) setPage(page + 1);
+                        goToPage(page + 1);
                       }}
                     />
                   </PaginationItem>
@@ -475,6 +505,31 @@ export default function Home() {
           )}
         </section>
       </main>
+      <div className="fixed bottom-5 right-5 z-30 flex flex-col gap-2">
+        <button
+          type="button"
+          onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+          className="grid size-10 place-items-center rounded-xl border border-[#c9d8d2] bg-white/95 text-[#35665b] shadow-lg backdrop-blur transition hover:bg-[#edf4ef] focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-[#8cc7bb]"
+          aria-label="快速回到页面顶部"
+          title="回到顶部"
+        >
+          <ChevronsUp className="size-5" aria-hidden="true" />
+        </button>
+        <button
+          type="button"
+          onClick={() =>
+            window.scrollTo({
+              top: document.documentElement.scrollHeight,
+              behavior: 'smooth',
+            })
+          }
+          className="grid size-10 place-items-center rounded-xl border border-[#c9d8d2] bg-white/95 text-[#35665b] shadow-lg backdrop-blur transition hover:bg-[#edf4ef] focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-[#8cc7bb]"
+          aria-label="快速前往页面底部"
+          title="前往底部"
+        >
+          <ChevronsDown className="size-5" aria-hidden="true" />
+        </button>
+      </div>
       <Dialog
         open={viewer !== null}
         onOpenChange={(open) => {

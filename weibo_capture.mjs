@@ -585,11 +585,13 @@ async function main() {
     const urls = [];
     if (directUrl) urls.push(directUrl);
     if (has('--resume')) {
-      const queued = await api(
-        settings.libraryUrl,
-        `/api/jobs?state=queued&limit=${limit}`,
-      );
-      urls.push(...queued.jobs.map((job) => job.sourceUrl));
+      for (const state of ['queued', 'failed']) {
+        const jobs = await api(
+          settings.libraryUrl,
+          `/api/jobs?state=${state}&limit=${limit}`,
+        );
+        urls.push(...jobs.jobs.map((job) => job.sourceUrl));
+      }
     }
     for (
       let index = 0;

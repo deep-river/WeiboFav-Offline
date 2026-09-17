@@ -1,6 +1,12 @@
 'use client';
 
-import { Fragment, type ReactElement, useCallback, useEffect, useState } from 'react';
+import {
+  Fragment,
+  type ReactElement,
+  useCallback,
+  useEffect,
+  useState,
+} from 'react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -71,10 +77,9 @@ const filters = [
   { id: 'image', label: '含图片' },
   { id: 'video', label: '视频缩略图' },
 ];
-const libraryOrigin = (process.env.NEXT_PUBLIC_WEIBOFAV_LIBRARY_URL || '').replace(
-  /\/$/,
-  '',
-);
+const libraryOrigin = (
+  process.env.NEXT_PUBLIC_WEIBOFAV_LIBRARY_URL || ''
+).replace(/\/$/, '');
 function libraryUrl(path: string) {
   return libraryOrigin ? `${libraryOrigin}${path}` : path;
 }

@@ -1,7 +1,59 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
-@import 'shadcn/tailwind.css';
 @custom-variant dark (&:is(.dark *));
-@theme inline { --color-background: var(--background); --color-foreground: var(--foreground); --font-sans: var(--font-geist-sans); --font-heading: Georgia, 'Songti SC', 'Noto Serif SC', serif; --color-primary: var(--primary); --color-primary-foreground: var(--primary-foreground); --color-secondary: var(--secondary); --color-secondary-foreground: var(--secondary-foreground); --color-muted: var(--muted); --color-muted-foreground: var(--muted-foreground); --color-destructive: var(--destructive); --color-border: var(--border); --color-input: var(--input); --color-ring: var(--ring); --color-popover: var(--popover); --color-popover-foreground: var(--popover-foreground); --radius: .75rem; }
-:root { --background: #f6f6f2; --foreground: #1d2a2a; --primary: #1e6b5d; --primary-foreground: #fff; --secondary: #edf4ef; --secondary-foreground: #325d52; --muted: #edf1ef; --muted-foreground: #657370; --destructive: #8f3634; --border: #d9e4df; --input: #d8e2de; --ring: #8cc7bb; --popover: #fff; --popover-foreground: #1d2a2a; }
-* { @apply border-border; } html { font-family: var(--font-geist-sans), Arial, sans-serif; } body { margin: 0; background: var(--background); color: var(--foreground); } .font-serif { font-family: Georgia, 'Songti SC', 'Noto Serif SC', serif; } .eyebrow { color: #527c70; font-size: .75rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-heading: Georgia, 'Songti SC', 'Noto Serif SC', serif;
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --radius: 0.75rem;
+}
+:root {
+  --background: #f6f6f2;
+  --foreground: #1d2a2a;
+  --primary: #1e6b5d;
+  --primary-foreground: #fff;
+  --secondary: #edf4ef;
+  --secondary-foreground: #325d52;
+  --muted: #edf1ef;
+  --muted-foreground: #657370;
+  --destructive: #8f3634;
+  --border: #d9e4df;
+  --input: #d8e2de;
+  --ring: #8cc7bb;
+  --popover: #fff;
+  --popover-foreground: #1d2a2a;
+}
+* {
+  @apply border-border;
+}
+html {
+  font-family: var(--font-geist-sans), Arial, sans-serif;
+}
+body {
+  margin: 0;
+  background: var(--background);
+  color: var(--foreground);
+}
+.font-serif {
+  font-family: Georgia, 'Songti SC', 'Noto Serif SC', serif;
+}
+.eyebrow {
+  color: #527c70;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}

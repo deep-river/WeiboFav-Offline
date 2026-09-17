@@ -46,6 +46,7 @@ next-env.d.ts
 /.weibofav-api.pid
 /.weibofav-api.port
 /__pycache__/
+*.tsbuildinfo
 
 # The starter ships a broad UI catalog; track only the primitives used here.
 /components/ui/*

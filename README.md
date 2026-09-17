@@ -13,29 +13,48 @@
 - 本地浏览器支持按时间分页、页码快速跳转、全文检索、媒体筛选、粘性批量删除栏、回到顶部/底部与大图预览；滚轮浏览长图，双指捏合或 `Ctrl + 滚轮` 缩放。
 - 采集具有随机节流、失败重试、连续失败保护、断点续跑、磁盘空间保留和 NDJSON 运行日志。
 
-## 环境要求
+## 环境与依赖
 
-- Node.js 22 或更高版本
-- pnpm 10 或更高版本
-- Python 3.10 或更高版本（只使用标准库）
-- 已安装的 Google Chrome
+这个项目不依赖 Codex，也不使用其运行时。启动脚本只使用系统 PATH 中的工具；缺少任一工具时，会在启动任何服务前退出并打印对应的安装命令，不会下载隐藏依赖或留下半启动进程。
+
+机器级前置工具只有以下几项：
+
+- Node.js 22.13+：构建和运行本地浏览页，也运行采集脚本。
+- pnpm 12.4.2+：安装项目的 JavaScript 依赖；版本固定在 `packageManager` 字段中。
+- Python 3.10+：运行本地 API、SQLite 数据库和媒体文件服务；只使用 Python 标准库，因此没有 `requirements.txt`。
+- Google Chrome：仅在执行微博采集时需要；浏览页本身不需要 Chrome。
+
+项目依赖全部安装在被 Git 忽略的 `node_modules/` 中。`pnpm-lock.yaml` 锁定精确版本，启动脚本每次都会运行 `pnpm install --frozen-lockfile`：首次安装会下载锁定版本，之后仅校验或补齐变更；该模式不会静默升级或改写依赖版本。采集端使用 `playwright-core` 连接已有 Chrome，**不会**下载 Playwright 自带浏览器。Cloudflare、Sites 和未使用的 UI 模板包已移除。
+
+macOS（已安装 Homebrew）的一次性前置工具安装：
+
+```bash
+brew install node pnpm python
+```
+
+Windows（PowerShell 或命令提示符）的一次性前置工具安装：
+
+```bat
+winget install OpenJS.NodeJS.LTS
+winget install Python.Python.3.13
+npm install --global pnpm@12.4.2
+```
+
+安装完成后请重新打开终端，使新的 PATH 生效。除这三个通用运行时外，所有项目包、浏览器会话和离线内容均留在项目目录或你指定的数据目录中。
 
 ## 安装与启动
 
 ```bash
 git clone https://github.com/deep-river/WeiboFav-Offline.git
 cd WeiboFav-Offline
-pnpm install
 ./scripts/start-mac.command
 ```
 
-启动脚本会分别启动页面服务与仅供本机访问的 API/媒体服务；命令行打印并自动打开的地址才是离线库页面地址。不要直接访问内部 API 端口。
+在网络正常且已满足上述前置工具的首次启动中，脚本会自动安装锁定依赖、构建页面、启动服务并打开浏览器。启动脚本会分别启动页面服务与仅供本机访问的 API/媒体服务；命令行打印并自动打开的地址才是离线库页面地址。不要直接访问内部 API 端口。
 
 ### 一键启动与停止
 
-首次使用前请安装 Node.js、pnpm 和 Python 3。之后可双击或在终端执行以下脚本；启动脚本会在需要时安装依赖、构建页面，并从 `4319` 开始自动寻找可用端口（例如 `4319` 被占用时改用 `4320`）。完成后会在命令行显示实际地址并自动打开浏览器。停止脚本只会终止由该项目启动且记录在 PID 文件中的服务。
-
-在运行 Codex desktop 的 macOS 机器上，若尚未安装 Node.js/pnpm，启动脚本会临时使用 Codex 自带的本地运行时并提示你安装正式依赖；这只是当前机器的便利回退，不会随项目部署到其他设备。要完全独立使用，请安装 Node.js 22+，然后运行 `corepack enable && corepack prepare pnpm@latest --activate`。
+首次使用前请安装 Node.js、pnpm 和 Python 3。之后可双击或在终端执行以下脚本；启动脚本会在需要时安装锁定依赖、构建页面，并从 `4319` 开始自动寻找可用端口（例如 `4319` 被占用时改用 `4320`）。完成后会在命令行显示实际地址并自动打开浏览器。停止脚本只会终止由该项目启动且记录在 PID 文件中的服务。
 
 ```bash
 # macOS
@@ -107,6 +126,18 @@ capture-browser-profile/        # 专用 Chrome 登录档案
 - 媒体先下载到临时文件，验证图片类型、尺寸与 SHA-256 后才写入数据库清单。
 - 页面仅监听 `127.0.0.1`，不暴露给局域网。
 - 评论、视频文件和已删除正文不保存。
+
+## 依赖维护
+
+功能代码与归档内容保持分离：代码、`package.json` 和 `pnpm-lock.yaml` 进入 Git；`node_modules/`、`data/`、日志、浏览器会话和个人配置不进入 Git。升级功能依赖时应使用 pnpm 更新 `package.json` 与锁文件，并在提交前执行：
+
+```bash
+pnpm install --frozen-lockfile
+pnpm lint
+pnpm build
+```
+
+不需要采集功能时，依然会安装 `playwright-core`，以保证同一份锁文件在需要采集时可直接使用；它不包含浏览器二进制。除此之外，前端只保留当前离线库实际使用的 React、Vinext、Tailwind 和 6 个基础交互组件依赖。
 
 ## 开发
 

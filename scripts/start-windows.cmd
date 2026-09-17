@@ -21,13 +21,17 @@ if exist %UI_PID_FILE% if exist %API_PID_FILE% (
 )
 
 call scripts\stop-windows.cmd >nul 2>nul
-where node >nul 2>nul || (echo Node.js 22+ is required. Install it from https://nodejs.org/. & exit /b 1)
-where pnpm >nul 2>nul || (echo pnpm is required. Install it with: corepack enable ^&^& corepack prepare pnpm@latest --activate & exit /b 1)
+where node >nul 2>nul || (echo Node.js 22+ is required. Install it with: winget install OpenJS.NodeJS.LTS & exit /b 1)
+where pnpm >nul 2>nul || (echo pnpm 12.4.2 is required. Install it with: npm install --global pnpm@12.4.2 & exit /b 1)
 where python >nul 2>nul || (echo Python 3 is required. Install Python 3 first. & exit /b 1)
+for /f %%V in ('node -p "process.versions.node.split('.')[0]"') do set NODE_MAJOR=%%V
+for /f "tokens=1 delims=." %%V in ('pnpm --version') do set PNPM_MAJOR=%%V
+if %NODE_MAJOR% LSS 22 (echo Node.js 22+ is required. & exit /b 1)
+if %PNPM_MAJOR% LSS 12 (echo pnpm 12.4.2+ is required. & exit /b 1)
 
 for /f %%P in ('powershell -NoProfile -Command "$port = 4319; while (Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue) { $port += 1 }; $port"') do set UI_PORT=%%P
 for /f %%P in ('powershell -NoProfile -Command "$port = %UI_PORT% + 1; while (Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue) { $port += 1 }; $port"') do set API_PORT=%%P
-if not exist node_modules call pnpm install --frozen-lockfile || exit /b 1
+call pnpm install --frozen-lockfile || exit /b 1
 set NEXT_PUBLIC_WEIBOFAV_LIBRARY_URL=http://127.0.0.1:%API_PORT%
 call pnpm build || exit /b 1
 if not exist data\logs mkdir data\logs

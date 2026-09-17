@@ -583,7 +583,10 @@ async function main() {
     const limit = Number(argument('--limit', String(settings.batchSize)));
     const directUrl = argument('--url', '');
     const incremental = has('--incremental');
-    const knownPagesToStop = Math.max(1, Number(argument('--known-pages', '3')));
+    const knownPagesToStop = Math.max(
+      1,
+      Number(argument('--known-pages', '3')),
+    );
     const maxPages = Math.max(1, Number(argument('--max-pages', '100')));
     const urls = [];
     if (directUrl) urls.push(directUrl);
@@ -598,7 +601,11 @@ async function main() {
     }
     let consecutiveKnownPages = 0;
     const pagesToScan = incremental ? maxPages : pages;
-    for (let index = 0; !directUrl && index < pagesToScan && urls.length < limit; index += 1) {
+    for (
+      let index = 0;
+      !directUrl && index < pagesToScan && urls.length < limit;
+      index += 1
+    ) {
       const favoritePage = incremental ? index + 1 : fromPage + index;
       const discovered = await loadFavoritesPage(
         page,
@@ -611,7 +618,8 @@ async function main() {
       });
       urls.push(...queued.captureUrls);
       if (incremental) {
-        consecutiveKnownPages = queued.newCount === 0 ? consecutiveKnownPages + 1 : 0;
+        consecutiveKnownPages =
+          queued.newCount === 0 ? consecutiveKnownPages + 1 : 0;
       }
       await logger.log('favorites_discovered', {
         favoritePage,
@@ -624,7 +632,9 @@ async function main() {
         `收藏页 ${favoritePage}：发现 ${discovered.length} 条，新增 ${queued.newCount} 条，待采集 ${queued.captureUrls.length} 条。`,
       );
       if (incremental && consecutiveKnownPages >= knownPagesToStop) {
-        console.log(`连续 ${knownPagesToStop} 页没有新增收藏，结束本次增量扫描。`);
+        console.log(
+          `连续 ${knownPagesToStop} 页没有新增收藏，结束本次增量扫描。`,
+        );
         break;
       }
       if (index < pagesToScan - 1 && urls.length < limit) {

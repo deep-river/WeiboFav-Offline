@@ -16,9 +16,13 @@ fi
 for pid_file in "$PID_FILE" "$API_PID_FILE"; do
   [[ -f "$pid_file" ]] || continue
   process_pid="$(<"$pid_file")"
-  if kill -0 "$process_pid" 2>/dev/null; then
+  expected_command='vinext'
+  [[ "$pid_file" == "$API_PID_FILE" ]] && expected_command='library_server.py'
+  if kill -0 "$process_pid" 2>/dev/null && [[ "$(ps -p "$process_pid" -o command=)" == *"$expected_command"* ]]; then
     kill "$process_pid"
     echo "WeiboFav Offline stopped (PID $process_pid)."
+  else
+    echo "Skipped stale PID $process_pid; it is not the recorded WeiboFav process."
   fi
 done
 rm -f "$PID_FILE" "$API_PID_FILE" "$PORT_FILE" "$API_PORT_FILE"

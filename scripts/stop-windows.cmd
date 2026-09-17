@@ -1,19 +1,17 @@
 @echo off
-setlocal
+setlocal EnableExtensions
 cd /d "%~dp0.."
 
-if not exist .weibofav-server.pid (
-  echo No WeiboFav Offline service was started by this project.
-  exit /b 0
-)
+call :stop .weibofav-server.pid vinext
+call :stop .weibofav-api.pid library_server.py
+del .weibofav-server.port >nul 2>nul
+del .weibofav-api.port >nul 2>nul
+exit /b 0
 
-set /p SERVER_PID=<.weibofav-server.pid
-powershell -NoProfile -Command "$p = Get-CimInstance Win32_Process -Filter 'ProcessId=%SERVER_PID%' -ErrorAction SilentlyContinue; if ($p -and $p.CommandLine -like '*library_server.py*') { Stop-Process -Id %SERVER_PID% -Force; exit 0 }; exit 1"
-set STOP_RESULT=%ERRORLEVEL%
-del .weibofav-server.pid
-if exist .weibofav-server.port del .weibofav-server.port
-if not "%STOP_RESULT%"=="0" (
-  echo The recorded service is no longer running; no process was stopped.
-) else (
-  echo WeiboFav Offline stopped.
-)
+:stop
+if not exist %~1 exit /b 0
+set /p PROCESS_PID=<%~1
+powershell -NoProfile -Command "$p = Get-CimInstance Win32_Process -Filter 'ProcessId=%PROCESS_PID%' -ErrorAction SilentlyContinue; if ($p -and $p.CommandLine -like '*%~2*') { Stop-Process -Id %PROCESS_PID% -Force; exit 0 }; exit 1"
+if not errorlevel 1 echo WeiboFav Offline stopped (PID %PROCESS_PID%).
+del %~1 >nul 2>nul
+exit /b 0

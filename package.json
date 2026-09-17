@@ -18,7 +18,7 @@
     "build": "vinext build",
     "library": "python3 library_server.py",
     "capture": "node weibo_capture.mjs",
-    "start": "pnpm build && pnpm library",
+    "web": "vinext start",
     "lint": "oxlint",
     "format": "oxfmt"
   },

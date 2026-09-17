@@ -51,7 +51,7 @@ function has(name) {
 }
 function usage() {
   console.log(
-    `\n微博收藏离线采集脚本\n\n首次登录： node weibo_capture.mjs --login\n采集一页： node weibo_capture.mjs --from-page 1 --pages 1\n续跑队列： node weibo_capture.mjs --resume --limit 20\n重采一条： node weibo_capture.mjs --url https://weibo.com/作者ID/微博短码\n\n默认数据目录为 data/；可在 capture.config.json 或 WEIBOFAV_DATA_DIR 中指定其他位置。请只在该脚本打开的专用浏览器中登录一次。\n`,
+    `\n微博收藏离线采集脚本\n\n首次登录： node weibo_capture.mjs --login\n采集一页： node weibo_capture.mjs --from-page 1 --pages 1\n增量采集： node weibo_capture.mjs --incremental\n续跑失败队列： node weibo_capture.mjs --resume --limit 20\n\n默认数据目录为 data/；可在 capture.config.json 或 WEIBOFAV_DATA_DIR 中指定其他位置。请只在该脚本打开的专用浏览器中登录一次。\n`,
   );
 }
 function now() {
@@ -582,6 +582,9 @@ async function main() {
     const pages = Number(argument('--pages', '1'));
     const limit = Number(argument('--limit', String(settings.batchSize)));
     const directUrl = argument('--url', '');
+    const incremental = has('--incremental');
+    const knownPagesToStop = Math.max(1, Number(argument('--known-pages', '3')));
+    const maxPages = Math.max(1, Number(argument('--max-pages', '100')));
     const urls = [];
     if (directUrl) urls.push(directUrl);
     if (has('--resume')) {
@@ -593,12 +596,10 @@ async function main() {
         urls.push(...jobs.jobs.map((job) => job.sourceUrl));
       }
     }
-    for (
-      let index = 0;
-      !directUrl && index < pages && urls.length < limit;
-      index += 1
-    ) {
-      const favoritePage = fromPage + index;
+    let consecutiveKnownPages = 0;
+    const pagesToScan = incremental ? maxPages : pages;
+    for (let index = 0; !directUrl && index < pagesToScan && urls.length < limit; index += 1) {
+      const favoritePage = incremental ? index + 1 : fromPage + index;
       const discovered = await loadFavoritesPage(
         page,
         settings.favoritesUrl.replace('{page}', String(favoritePage)),
@@ -609,15 +610,24 @@ async function main() {
         body: JSON.stringify({ favoritePage, urls: discovered }),
       });
       urls.push(...queued.captureUrls);
+      if (incremental) {
+        consecutiveKnownPages = queued.newCount === 0 ? consecutiveKnownPages + 1 : 0;
+      }
       await logger.log('favorites_discovered', {
         favoritePage,
         count: discovered.length,
         queuedCount: queued.captureUrls.length,
+        newCount: queued.newCount,
+        consecutiveKnownPages,
       });
       console.log(
-        `收藏页 ${favoritePage}：发现 ${discovered.length} 条，待采集 ${queued.captureUrls.length} 条。`,
+        `收藏页 ${favoritePage}：发现 ${discovered.length} 条，新增 ${queued.newCount} 条，待采集 ${queued.captureUrls.length} 条。`,
       );
-      if (index < pages - 1 && urls.length < limit) {
+      if (incremental && consecutiveKnownPages >= knownPagesToStop) {
+        console.log(`连续 ${knownPagesToStop} 页没有新增收藏，结束本次增量扫描。`);
+        break;
+      }
+      if (index < pagesToScan - 1 && urls.length < limit) {
         const delayMs = jitter(settings);
         await logger.log('favorites_page_pause', { favoritePage, delayMs });
         await pause(delayMs);

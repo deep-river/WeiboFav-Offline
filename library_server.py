@@ -11,7 +11,7 @@ from urllib.parse import unquote, urlparse
 ROOT = Path(__file__).resolve().parent
 DATA = Path(os.environ.get('WEIBOFAV_DATA_DIR', ROOT / 'data')).expanduser().resolve()
 MEDIA, DB, BUILD = DATA / 'media', DATA / 'library.sqlite3', ROOT / 'dist' / 'client'
-SCHEMA = '''CREATE TABLE IF NOT EXISTS posts (id TEXT PRIMARY KEY, author TEXT NOT NULL, published_at TEXT NOT NULL, source_url TEXT NOT NULL, source TEXT NOT NULL, text TEXT NOT NULL, repost_text TEXT, repost_author TEXT, captured_at TEXT NOT NULL, tags_json TEXT NOT NULL); CREATE TABLE IF NOT EXISTS media (id TEXT PRIMARY KEY, post_id TEXT NOT NULL REFERENCES posts(id) ON DELETE CASCADE, kind TEXT NOT NULL CHECK(kind IN ('image','video-thumbnail')), relative_path TEXT NOT NULL, original_url TEXT NOT NULL, bytes INTEGER NOT NULL); CREATE TABLE IF NOT EXISTS sync_state (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP); CREATE TABLE IF NOT EXISTS capture_jobs (source_url TEXT PRIMARY KEY, favorite_page INTEGER NOT NULL, state TEXT NOT NULL DEFAULT 'queued' CHECK(state IN ('queued','captured','skipped_deleted','failed')), attempts INTEGER NOT NULL DEFAULT 0, discovered_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP); CREATE INDEX IF NOT EXISTS idx_posts_published_at ON posts(published_at DESC); CREATE INDEX IF NOT EXISTS idx_media_post_id ON media(post_id); CREATE INDEX IF NOT EXISTS idx_capture_jobs_state ON capture_jobs(state, favorite_page);'''
+SCHEMA = '''CREATE TABLE IF NOT EXISTS posts (id TEXT PRIMARY KEY, author TEXT NOT NULL, published_at TEXT NOT NULL, source_url TEXT NOT NULL, source TEXT NOT NULL, text TEXT NOT NULL, repost_text TEXT, repost_author TEXT, captured_at TEXT NOT NULL, tags_json TEXT NOT NULL); CREATE TABLE IF NOT EXISTS media (id TEXT PRIMARY KEY, post_id TEXT NOT NULL REFERENCES posts(id) ON DELETE CASCADE, kind TEXT NOT NULL CHECK(kind IN ('image','video-thumbnail')), relative_path TEXT NOT NULL, original_url TEXT NOT NULL, bytes INTEGER NOT NULL); CREATE TABLE IF NOT EXISTS sync_state (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP); CREATE TABLE IF NOT EXISTS capture_jobs (source_url TEXT PRIMARY KEY, favorite_page INTEGER NOT NULL, state TEXT NOT NULL DEFAULT 'queued' CHECK(state IN ('queued','captured','skipped_deleted','failed')), attempts INTEGER NOT NULL DEFAULT 0, discovered_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP); CREATE TABLE IF NOT EXISTS local_tombstones (source_url TEXT PRIMARY KEY, post_id TEXT NOT NULL, deleted_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, reason TEXT NOT NULL DEFAULT 'local_delete'); CREATE TABLE IF NOT EXISTS favorite_observations (source_url TEXT PRIMARY KEY, first_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, last_favorite_page INTEGER NOT NULL, sightings INTEGER NOT NULL DEFAULT 1); CREATE INDEX IF NOT EXISTS idx_posts_published_at ON posts(published_at DESC); CREATE INDEX IF NOT EXISTS idx_media_post_id ON media(post_id); CREATE INDEX IF NOT EXISTS idx_capture_jobs_state ON capture_jobs(state, favorite_page); CREATE INDEX IF NOT EXISTS idx_favorite_observations_page ON favorite_observations(last_favorite_page);'''
 
 def connect():
   conn = sqlite3.connect(DB); conn.row_factory = sqlite3.Row; conn.execute('PRAGMA foreign_keys = ON'); return conn
@@ -102,7 +102,11 @@ class Handler(SimpleHTTPRequestHandler):
       except (KeyError, ValueError, json.JSONDecodeError): self.send_json(HTTPStatus.BAD_REQUEST, {'error': 'Invalid captured post'}); return
       stale_paths = []
       with connect() as conn:
-        conn.execute('''INSERT INTO posts (id,author,published_at,source_url,source,text,repost_text,repost_author,captured_at,tags_json,is_favorited,last_seen_at,original_url,expected_media_count) VALUES (?,?,?,?,?,?,?,?,?,?,1,CURRENT_TIMESTAMP,?,?) ON CONFLICT(id) DO UPDATE SET author=excluded.author,published_at=excluded.published_at,source_url=excluded.source_url,source=excluded.source,text=excluded.text,repost_text=excluded.repost_text,repost_author=excluded.repost_author,captured_at=excluded.captured_at,tags_json=excluded.tags_json,is_favorited=1,last_seen_at=CURRENT_TIMESTAMP,original_url=excluded.original_url,expected_media_count=excluded.expected_media_count''', (post['id'], post['author'], post['publishedAt'], post['sourceUrl'], post['source'], post['text'], post.get('repostText'), post.get('repostAuthor'), post['capturedAt'], json.dumps(post.get('tags', []), ensure_ascii=False), post.get('originalUrl'), expected))
+        tombstone = conn.execute('SELECT 1 FROM local_tombstones WHERE source_url=?', (post['sourceUrl'],)).fetchone()
+        existing = conn.execute('SELECT 1 FROM posts WHERE id=? OR source_url=?', (post['id'], post['sourceUrl'])).fetchone()
+        if tombstone or existing:
+          self.send_json(HTTPStatus.OK, {'skipped': post['sourceUrl'], 'reason': 'locally_deleted' if tombstone else 'already_archived'}); return
+        conn.execute('INSERT INTO posts (id,author,published_at,source_url,source,text,repost_text,repost_author,captured_at,tags_json,is_favorited,last_seen_at,original_url,expected_media_count) VALUES (?,?,?,?,?,?,?,?,?,?,1,CURRENT_TIMESTAMP,?,?)', (post['id'], post['author'], post['publishedAt'], post['sourceUrl'], post['source'], post['text'], post.get('repostText'), post.get('repostAuthor'), post['capturedAt'], json.dumps(post.get('tags', []), ensure_ascii=False), post.get('originalUrl'), expected))
         for media in media_items:
           if media.get('kind') not in ('image', 'video-thumbnail'): raise ValueError('Invalid media kind')
           path = local_path(media['path'])
@@ -116,8 +120,8 @@ class Handler(SimpleHTTPRequestHandler):
         stale_paths = [item['relative_path'] for item in stale]
         if stale: conn.executemany('DELETE FROM media WHERE id=?', [(item['id'],) for item in stale])
         conn.execute("UPDATE capture_jobs SET state='captured', attempts=attempts+1, updated_at=CURRENT_TIMESTAMP WHERE source_url=?", (post['sourceUrl'],))
-      # Re-capture is an exact snapshot: remove unreferenced former media only
-      # after the transaction succeeds, so stale thumbnails cannot linger.
+      # A post is immutable once archived. This cleanup only protects against
+      # malformed duplicate media entries within a single initial import.
       for value in stale_paths:
         with connect() as conn:
           still_used = conn.execute('SELECT 1 FROM media WHERE relative_path=?', (value,)).fetchone()
@@ -131,17 +135,20 @@ class Handler(SimpleHTTPRequestHandler):
         if not urls: raise ValueError
       except (ValueError, json.JSONDecodeError): self.send_json(HTTPStatus.BAD_REQUEST, {'error': 'Invalid queue request'}); return
       with connect() as conn:
-        capture_urls = []
+        capture_urls, new_count = [], 0
         for url in urls:
+          conn.execute('''INSERT INTO favorite_observations (source_url,last_favorite_page) VALUES (?,?) ON CONFLICT(source_url) DO UPDATE SET last_seen_at=CURRENT_TIMESTAMP,last_favorite_page=excluded.last_favorite_page,sightings=sightings+1''', (url, page))
+          tombstone = conn.execute('SELECT 1 FROM local_tombstones WHERE source_url=?', (url,)).fetchone()
+          if tombstone: continue
           row = conn.execute('SELECT state FROM capture_jobs WHERE source_url=?', (url,)).fetchone()
           if row is None:
             conn.execute('INSERT INTO capture_jobs (source_url, favorite_page) VALUES (?, ?)', (url, page))
-            capture_urls.append(url)
+            capture_urls.append(url); new_count += 1
           else:
             conn.execute('UPDATE capture_jobs SET favorite_page=?, updated_at=CURRENT_TIMESTAMP WHERE source_url=?', (page, url))
-            if row['state'] not in ('captured', 'skipped_deleted'): capture_urls.append(url)
+            if row['state'] == 'queued': capture_urls.append(url)
         pending = conn.execute("SELECT COUNT(*) FROM capture_jobs WHERE state='queued'").fetchone()[0]
-      self.send_json(HTTPStatus.OK, {'queued': len(capture_urls), 'pending': pending, 'captureUrls': capture_urls}); return
+      self.send_json(HTTPStatus.OK, {'queued': len(capture_urls), 'newCount': new_count, 'pending': pending, 'captureUrls': capture_urls}); return
     if urlparse(self.path).path == '/api/job':
       try:
         body = json.loads(self.rfile.read(int(self.headers.get('Content-Length', '0')))); url = body['sourceUrl']; state = body['state']; detail = body.get('detail')
@@ -157,7 +164,9 @@ class Handler(SimpleHTTPRequestHandler):
     except (ValueError, json.JSONDecodeError): self.send_json(HTTPStatus.BAD_REQUEST, {'error': 'Invalid delete request'}); return
     marks = ','.join('?' * len(ids))
     with connect() as conn:
+      deleted_posts = conn.execute(f'SELECT id,source_url FROM posts WHERE id IN ({marks})', ids).fetchall()
       paths = [row['relative_path'] for row in conn.execute(f'SELECT relative_path FROM media WHERE post_id IN ({marks})', ids)]
+      conn.executemany('''INSERT INTO local_tombstones (source_url,post_id) VALUES (?,?) ON CONFLICT(source_url) DO UPDATE SET post_id=excluded.post_id,deleted_at=CURRENT_TIMESTAMP,reason='local_delete' ''', [(row['source_url'], row['id']) for row in deleted_posts])
       conn.execute(f'DELETE FROM posts WHERE id IN ({marks})', ids)
       for value in paths:
         try: local_path(value).unlink(missing_ok=True)

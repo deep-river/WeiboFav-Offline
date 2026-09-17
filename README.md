@@ -47,11 +47,11 @@ pnpm capture -- --login
 # 采集收藏夹第 1 页，默认最多 20 条
 pnpm capture -- --from-page 1 --pages 1
 
-# 从失败前留下的队列继续
+# 从失败前留下的队列继续（不会在常规增量扫描中自动重试）
 pnpm capture -- --resume --limit 20
 
-# 仅重新采集某条已知微博，用于修复媒体或测试
-pnpm capture -- --url https://weibo.com/作者ID/微博短码
+# 仅追加线上新增收藏；连续 3 页没有新 URL 后停止
+pnpm capture -- --incremental
 ```
 
 采集服务必须正在运行；日志会写入 `<dataDir>/logs/`，每行一个 JSON 事件，包含发现页、单条耗时、重试、跳过和失败原因。
@@ -82,9 +82,9 @@ capture-browser-profile/        # 专用 Chrome 登录档案
 
 ## 采集策略与增量更新
 
-默认配置以 3.5–6 秒随机间隔请求正文，并在每 20 条后暂停 90 秒。可在 `capture.config.json` 调整批次、间隔、媒体并发和剩余磁盘空间下限。脚本每次先登记收藏页链接，再按微博 URL 去重；重复采集会更新该微博的完整快照并清理不再引用的旧媒体。
+默认配置以 3.5–6 秒随机间隔请求正文，并在每 20 条后暂停 90 秒。可在 `capture.config.json` 调整批次、间隔、媒体并发和剩余磁盘空间下限。脚本每次先登记收藏页链接，再按微博 URL 去重；已归档的 URL 不会再次写入。
 
-当收藏夹发生变化时，从第 1 页开始小批量运行即可发现新增内容；旧收藏不会在本地自动删除，以免误删你的存档，可在浏览器页面中选择后批量删除。更完整的策略见 [CAPTURE_STRATEGY.md](CAPTURE_STRATEGY.md)。
+当收藏夹发生变化时，运行 `pnpm capture -- --incremental`。它从第 1 页开始扫描，连续 3 页没有新 URL 后停止（可用 `--known-pages` 调整，默认最多扫描 100 页）。已归档 URL 不会覆盖；在页面中删除的内容会留下本地删除标记，即使它仍在线上收藏夹中也不会重新导入。线上取消收藏不会删除本地备份。更完整的策略见 [CAPTURE_STRATEGY.md](CAPTURE_STRATEGY.md)。
 
 ## 数据安全边界
 
